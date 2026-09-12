@@ -147,10 +147,93 @@ def _fix_lone_backslashes(s: str) -> str:
     return re.sub(r'\\(?![\\"/bfnrtu])', r'\\\\', s)
 
 
+_DOC_TOOLS = ("create_docx", "create_pdf", "create_pptx", "create_excel")
+
+
+def _fix_json_brackets(s: str) -> str:
+    """Balance { } and [ ] in a JSON string by scanning with a stack.
+
+    qwen2.5 consistently produces create_pptx output where the slides array
+    is never closed with ] — the model emits }}} (closing action_input and
+    the outer object) directly after the last slide object, leaving one open
+    [ bracket and one extra } on the stack.
+
+    This scanner inserts a ] whenever a } is encountered while the top of
+    the stack is an open [, and drops any extra } that appear when the stack
+    is already empty.  Valid JSON is passed through unchanged.
+    """
+    stack = []
+    result = list(s)
+    i = 0
+    in_str = False
+    esc = False
+    while i < len(result):
+        c = result[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == '\\':
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c in ('{', '['):
+                stack.append(c)
+            elif c == '}':
+                if stack and stack[-1] == '[':
+                    # Array was not closed — insert the missing ] and reprocess
+                    result.insert(i, ']')
+                    stack.pop()
+                    continue          # don't advance; reprocess this } next iteration
+                elif stack and stack[-1] == '{':
+                    stack.pop()
+                elif not stack:
+                    # Spurious extra } — discard it
+                    result.pop(i)
+                    continue
+            elif c == ']':
+                if stack and stack[-1] == '[':
+                    stack.pop()
+        i += 1
+    # Append any remaining unclosed openers
+    for opener in reversed(stack):
+        result.append(']' if opener == '[' else '}')
+    return ''.join(result)
+
+
+def _repair_doc_action_json(text: str):
+    """Fallback JSON repair for document-creation tool calls.
+
+    Applies _fix_json_brackets then attempts to parse.  Only activates when
+    the output contains one of the known document tool names.
+    Returns a parsed dict or None.
+    """
+    if not any(t in text for t in _DOC_TOOLS):
+        return None
+    start = text.find('{')
+    if start < 0:
+        return None
+    base = _escape_control_in_strings(_fix_backtick_strings(text[start:]))
+    base = _fix_lone_backslashes(base)
+    fixed = _fix_json_brackets(base)
+    decoder = json.JSONDecoder()
+    try:
+        obj, _ = decoder.raw_decode(fixed)
+        if isinstance(obj, dict) and "action" in obj:
+            return obj
+    except Exception:
+        pass
+    return None
+
+
+
 def parse_action(raw: str):
     """Lenient extractor: find the first decodable JSON object in the reply,
-    tolerating markdown fences, chatter around it, unescaped newlines and
-    lone backslashes from Windows paths."""
+    tolerating markdown fences, chatter around it, unescaped newlines,
+    lone backslashes, and the bracket-mismatch that qwen2.5 produces for
+    document-creation tools (create_pptx / create_docx / etc.)."""
     text = raw.strip()
     decoder = json.JSONDecoder()
     for i, ch in enumerate(text):
@@ -164,7 +247,8 @@ def parse_action(raw: str):
                 continue
             if isinstance(obj, dict) and "action" in obj:
                 return obj
-    return None
+    # Fallback: targeted bracket repair for document-creation tools
+    return _repair_doc_action_json(text)
 
 
 def _code_changed(transcript: list) -> bool:
@@ -193,14 +277,22 @@ def classify(state: AgentState) -> dict:
     hint = "\n(An image file is attached, so 'vision' is very likely.)" if state["image"] else ""
     prompt = (
         "Classify the task into exactly one category: coding, vision, or reasoning.\n"
-        "- coding = writing, debugging, testing or explaining code\n"
+        "- coding = writing, debugging, testing or explaining CODE (Python, JS, SQL scripts, etc.)\n"
         "- vision = understanding images, scanned documents, engineering drawings, photos, OCR\n"
-        "- PDF/DOCX/XLSX analysis = use read_pdf/read_docx/read_excel first; only use vision/OCR when the file is scanned or visual interpretation is required\n"
-        "- reasoning = everything else: summaries, analysis, Q&A, calculations\n"
+        "- reasoning = everything else: summaries, analysis, Q&A, calculations, explanations,\n"
+        "  AND any task that involves creating OR reading documents/reports/spreadsheets/presentations\n"
+        "  (e.g. make a report, create a docx, build an Excel sheet, make a PowerPoint,\n"
+        "   read a PDF/DOCX/XLSX/PPTX, write a Word document, generate a PDF report, etc.)\n"
         "Reply with ONLY the single category word.\n\n"
         "Task: Write a function to reverse a string\nAnswer: coding\n\n"
+        "Task: Debug this Python script that crashes\nAnswer: coding\n\n"
         "Task: Read this scanned inspection report and draft an approval note\nAnswer: vision\n\n"
         "Task: Summarize this maintenance log\nAnswer: reasoning\n\n"
+        "Task: Make a report docx on convolutional neural networks\nAnswer: reasoning\n\n"
+        "Task: Create an Excel spreadsheet with sales data\nAnswer: reasoning\n\n"
+        "Task: Build a PowerPoint presentation on machine learning\nAnswer: reasoning\n\n"
+        "Task: Read the PDF and summarize it\nAnswer: reasoning\n\n"
+        "Task: Write a Word document explaining transformer models\nAnswer: reasoning\n\n"
         f"Task: {state['task']}{hint}\nAnswer:"
     )
     raw = (chat(config.MODEL_ROUTER, [{"role": "user", "content": prompt}],
@@ -211,6 +303,18 @@ def classify(state: AgentState) -> dict:
         task_type = "vision"
     else:
         task_type = "reasoning"
+    # Override: document/report creation tasks always use the reasoning model regardless
+    # of what the router said, because the coder model cannot produce large structured JSON.
+    doc_keywords = (
+        "docx", "xlsx", "pptx", ".doc", ".xls", ".ppt",
+        "report", "word document", "pdf report", "excel sheet",
+        "spreadsheet", "powerpoint", "presentation", "create a pdf",
+        "make a pdf", "write a report", "build a report",
+    )
+    task_lower = state["task"].lower()
+    if task_type == "coding" and any(kw in task_lower for kw in doc_keywords):
+        task_type = "reasoning"
+        raw += " [overridden->reasoning: document-creation task]"
     worker = (config.MODEL_CODER if task_type == "coding"
               else config.MODEL_REASONING)
     print(f"[ROUTER] classified as '{task_type}' -> worker model: {worker} "
@@ -219,6 +323,7 @@ def classify(state: AgentState) -> dict:
     if config.OLLAMA_NAMES.get(worker) != config.OLLAMA_NAMES.get(config.MODEL_ROUTER):
         unload(config.MODEL_ROUTER)
     return {"task_type": task_type, "worker": worker}
+
 
 
 def agent_step(state: AgentState) -> dict:

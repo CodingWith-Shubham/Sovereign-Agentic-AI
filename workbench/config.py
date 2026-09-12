@@ -12,7 +12,7 @@ LITELLM_API_KEY = "sk-anything"  # local proxy only; no real key ever leaves the
 
 # Logical model names as exposed by litellm_config.yaml
 MODEL_ROUTER = "router"          # qwen2.5:7b              -> task classification
-MODEL_REASONING = "reasoning"    # llama3.2                -> reports, orchestration
+MODEL_REASONING = "reasoning"    # qwen2.5:7b              -> reports, documents, Q&A
 MODEL_CODER = "coder"            # qwen2.5-coder:7b
 MODEL_VISION = "vision"          # granite3.2-vision
 MODEL_VISION_PRO = "vision-pro"  # minicpm-v (heavier visual reasoning)
@@ -20,7 +20,7 @@ MODEL_VISION_PRO = "vision-pro"  # minicpm-v (heavier visual reasoning)
 # logical name -> actual ollama model (needed for `ollama stop` VRAM release)
 OLLAMA_NAMES = {
     MODEL_ROUTER: "qwen2.5:7b",
-    MODEL_REASONING: "llama3.2",
+    MODEL_REASONING: "qwen2.5:7b",   # same weights as router - no VRAM swap needed
     MODEL_CODER: "qwen2.5-coder:7b",
     "coder": "qwen2.5-coder:7b",
     MODEL_VISION: "granite3.2-vision:latest",
@@ -29,7 +29,7 @@ OLLAMA_NAMES = {
 
 MAX_AGENT_STEPS = 10   # safety cap on the think->act->observe loop
 CODE_TIMEOUT = 60      # seconds for sandboxed executions
-AGENT_TIMEOUT = 90     # seconds for one planner response
-AGENT_MAX_TOKENS = 800
-VISION_TIMEOUT = 120   # seconds for one local image-analysis request
-VISION_MAX_TOKENS = 512
+AGENT_TIMEOUT = 180    # seconds for one planner response (raised for large outputs)
+AGENT_MAX_TOKENS = 4096  # raised: fits full docx/pdf body, long code files in one shot
+VISION_TIMEOUT = 180   # seconds for one local image-analysis request
+VISION_MAX_TOKENS = 2048  # raised: richer image descriptions and OCR results
