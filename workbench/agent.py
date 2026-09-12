@@ -50,7 +50,7 @@ After OBSERVATION shows exit_code=0 and output 5: {{"thought": "The code works."
 
 RULES:
 - For edit_file, NEVER use multi-line strings in the 'search' or 'replace' fields. If you need to change more than one line of code, DO NOT use edit_file. Instead, use write_file to rewrite the entire script with the corrected code.
-- JSON rules: Never use raw line breaks or Python triple quotes (\"\"\") inside a JSON string.
+- JSON rules: Never use raw line breaks or Python triple quotes (\"\"\") inside a JSON string. CRITICAL: JSON values must be literal strings or numbers only — NEVER Python expressions, f-strings (f"..."), list comprehensions ([x for x in ...]), or any code constructs. For create_excel rows, write out every row as a hardcoded array: [[\"Alice\", \"101\", \"10A\"], [\"Bob\", \"102\", \"10B\"]] — never [[f\"Name {{i}}\" for i in range(5)]].
 - General Knowledge: If the user asks a simple question or asks for an explanation and you already know the answer, you do NOT need to call search_docs or list_files. Output the final_answer immediately.
 - NEVER create a file (write_file, create_docx, create_pdf, create_excel, create_pptx) "to have something to show." Only create a file if the user's task explicitly asks for code, a script, or a report/document/presentation as the deliverable. A knowledge question is answered with final_answer text - nothing else.
 - If search_docs returns NO_RELEVANT_DOCUMENTS_FOUND or an unrelated document, do NOT try to force it into an answer and do NOT compensate by writing unrelated code/files. Just answer from your own knowledge (clearly noting it is not grounded in plant documents) or say plainly that the ingested documents do not cover this.

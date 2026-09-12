@@ -464,6 +464,6 @@ TOOL_MANIFEST = """\
 - analyze_image(path, question="Describe this image in detail.") : ask the local vision model a specific question about an image / drawing / photo.
 - create_docx(filename, title, body) : create a Word report in outputs/. In body, "## Text" makes a heading, "- text" makes a bullet.
 - create_pdf(filename, title, body) : create a PDF report in outputs/. In body, "## Text" makes a heading, "- text" makes a bullet.
-- create_excel(filename, sheet_name, headers, rows) : create an Excel workbook in outputs/. Pass headers as a list and rows as a list of lists.
+- create_excel(filename, sheet_name, headers, rows) : create an Excel workbook in outputs/. Pass headers as a JSON array of strings and rows as a JSON array of arrays containing ONLY literal string or number values — never Python expressions, f-strings, or list comprehensions. EXAMPLE: create_excel("students.xlsx", "Students", ["Name", "Roll Number", "Class"], [["Alice", "101", "10A"], ["Bob", "102", "10B"], ["Carol", "103", "10C"]])
 - create_pptx(filename, title, slides) : create a PowerPoint presentation in outputs/. Pass exactly one object per requested slide, like {"title": "...", "body": ["bullet 1", "bullet 2"]}; the title is stored as presentation metadata.
 - search_docs(query) : semantic search over ingested reference/SOP documents (RAG); returns relevant passages with source names."""
