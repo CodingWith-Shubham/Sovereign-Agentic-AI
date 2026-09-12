@@ -27,7 +27,7 @@ OLLAMA_NAMES = {
     MODEL_VISION_PRO: "minicpm-v:latest",
 }
 
-MAX_AGENT_STEPS = 10   # safety cap on the think->act->observe loop
+MAX_AGENT_STEPS = 19   # safety cap; the guard rejects the next turn at step 20
 CODE_TIMEOUT = 60      # seconds for sandboxed executions
 AGENT_TIMEOUT = 180    # seconds for one planner response (raised for large outputs)
 AGENT_MAX_TOKENS = 4096  # raised: fits full docx/pdf body, long code files in one shot

@@ -107,7 +107,8 @@ def build_document():
     ]:
         add_bullet(document, item)
     document.add_paragraph(
-        "The normal step budget is MAX_AGENT_STEPS = 10. The orchestrator also protects the "
+        "The normal step budget is MAX_AGENT_STEPS = 19, with the unverified-code guard "
+        "rejecting a final answer on step 20. The orchestrator also protects the "
         "run from repeated reads or executions, malformed JSON, unverified code changes, and "
         "workers that continue acting after successful verification."
     )
