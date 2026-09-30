@@ -6,7 +6,7 @@ Sovereign AI Workbench turns a natural-language request into an observable, mult
 
 No prompt, source file, image, or generated report needs to leave the machine.
 
-## Why this can win a hackathon
+## Why this is Unique?
 
 Most agent demos stop at text generation. This one is built around the moment after generation: **doing the work and proving it worked**.
 
